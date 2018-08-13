@@ -215,9 +215,22 @@ ARGS are additional arguments to CALLBACK."
   (let ((evt (make-instance 'xcb:EnterNotify))
         buffer window frame frame-xid edges fake-evt)
     (xcb:unmarshal evt data)
-    (with-slots (time root event root-x root-y event-x event-y state) evt
+    (with-slots (time root event root-x root-y event-x event-y state
+                      child same-screen-focus mode detail) evt
       (setq buffer (exwm--id->buffer event)
             window (get-buffer-window buffer t))
+      (exwm--log "exwm-input--on-EnterNotify: buffer=%s; window=%s; selected-window=%s; event-window=#x%x; child-window=#x%x; focus=%s; mode=%s
+        detail=%s"
+                 buffer window (selected-window)
+                 event child same-screen-focus mode
+                 (nth detail '(xcb:NotifyDetail:Ancestor
+                               xcb:NotifyDetail:Virtual
+                               xcb:NotifyDetail:Inferior
+                               xcb:NotifyDetail:Nonlinear
+                               xcb:NotifyDetail:NonlinearVirtual
+                               xcb:NotifyDetail:Pointer
+                               xcb:NotifyDetail:PointerRoot
+                               xcb:NotifyDetail:None)))
       (when (and buffer window (not (eq window (selected-window))))
         (setq frame (window-frame window)
               frame-xid (frame-parameter frame 'exwm-id))
@@ -251,6 +264,27 @@ ARGS are additional arguments to CALLBACK."
                            :event-mask xcb:EventMask:NoEvent
                            :event (xcb:marshal fake-evt exwm--connection)))
         (xcb:flush exwm--connection)))))
+
+(defun exwm-input--on-LeaveNotify (data _synthetic)
+  "Handle LeaveNotify events."
+  (let ((evt (make-instance 'xcb:LeaveNotify))
+        buffer window frame frame-xid edges fake-evt)
+    (xcb:unmarshal evt data)
+    (with-slots (time root event root-x root-y event-x event-y state
+                      child same-screen-focus mode detail) evt
+      (setq buffer (exwm--id->buffer event)
+            window (get-buffer-window buffer t))
+      (exwm--log "exwm-input--on-LeaveNotify: buffer=%s; window=%s; selected-window=%s; event-window=#x%x; child-window=#x%x; focus=%s; mode=%s detail=%s"
+                 buffer window (selected-window)
+                 event child same-screen-focus mode
+                 (nth detail '(xcb:NotifyDetail:Ancestor
+                               xcb:NotifyDetail:Virtual
+                               xcb:NotifyDetail:Inferior
+                               xcb:NotifyDetail:Nonlinear
+                               xcb:NotifyDetail:NonlinearVirtual
+                               xcb:NotifyDetail:Pointer
+                               xcb:NotifyDetail:PointerRoot
+                               xcb:NotifyDetail:None))))))
 
 (defun exwm-input--on-keysyms-update ()
   (let ((exwm-input--global-prefix-keys nil))
@@ -971,7 +1005,10 @@ where both ORIGINAL-KEY and SIMULATED-KEY are key sequences."
               #'exwm-floating--do-moveresize)
   (when mouse-autoselect-window
     (xcb:+event exwm--connection 'xcb:EnterNotify
-                #'exwm-input--on-EnterNotify))
+                #'exwm-input--on-EnterNotify)
+    (exwm--debug
+     (xcb:+event exwm--connection 'xcb:LeaveNotify
+                 #'exwm-input--on-LeaveNotify)))
   ;; The input focus should be set on the frame when minibuffer is active.
   (add-hook 'minibuffer-setup-hook #'exwm-input--on-minibuffer-setup)
   ;; Control `exwm-input--during-command'
